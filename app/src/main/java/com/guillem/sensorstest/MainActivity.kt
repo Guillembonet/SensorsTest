@@ -27,7 +27,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var lastGyroAverage : Triple<Float, Float, Float> = Triple(0.0F, 0.0F, 0.0F)
 
     private var recordedValues1 : MutableList<Pair<Triple<Float, Float, Float>, Triple<Float, Float, Float>>> = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
+    private var tmpRecordedValues1 : MutableList<Pair<Triple<Float, Float, Float>, Triple<Float, Float, Float>>> = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
     private var recordedValues2 : MutableList<Pair<Triple<Float, Float, Float>, Triple<Float, Float, Float>>> = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
+    private var tmpRecordedValues2 : MutableList<Pair<Triple<Float, Float, Float>, Triple<Float, Float, Float>>> = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
     private var compareValues : MutableList<Pair<Triple<Float, Float, Float>, Triple<Float, Float, Float>>> = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
 
     private var recordMode : Int = 0
@@ -40,7 +42,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         setContentView(R.layout.activity_main)
 
         recordedValues1 = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
+        tmpRecordedValues1 = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
         recordedValues2 = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
+        tmpRecordedValues2 = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
         compareValues = MutableList(RECORD_SIZE){Pair(Triple(0.0F, 0.0F, 0.0F), Triple(0.0F, 0.0F, 0.0F))}
 
         accCount = 0
@@ -69,8 +73,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             recordCount = 0
         }
         findViewById<Button>(R.id.compare).setOnClickListener {
-            recordMode = 3
-            recordCount = 0
+            if (recorded1 && recorded2) {
+                recordMode = 3
+                recordCount = 0
+            } else {
+                findViewById<TextView>(R.id.sensor_data).text = "Record all movements first"
+            }
         }
         findViewById<TextView>(R.id.sensor_data).text = "Waiting..."
     }
@@ -97,6 +105,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         recordSensorValue(values, lastGyroAverage)
                         recordCount += 1
                         if (recordCount >= RECORD_SIZE) {
+                            if (recorded1) {
+                                trainCurrentData()
+                            }
+                            findViewById<Button>(R.id.record1).text = "Train first"
                             recordMode = 0
                             recorded1 = true
                             recordCount = 0
@@ -107,6 +119,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         recordSensorValue(values, lastGyroAverage)
                         recordCount += 1
                         if (recordCount >= RECORD_SIZE) {
+                            if (recorded2) {
+                                trainCurrentData()
+                            }
+                            findViewById<Button>(R.id.record2).text = "Train second"
                             recordMode = 0
                             recorded2 = true
                             recordCount = 0
@@ -125,7 +141,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             } else {
                                 findViewById<TextView>(R.id.sensor_data).text = "First"
                             }
-                            //findViewById<TextView>(R.id.sensor_data).text = "Recorded"
                         }
                     }
                     accCount = 0
@@ -134,11 +149,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             } else if (event.sensor.type == Sensor.TYPE_GYROSCOPE) {
                 gyroAverage = Triple(gyroAverage.first+event.values[0], gyroAverage.second+event.values[1], gyroAverage.third+event.values[2])
                 gyroCount += 1
-                if (gyroCount == SAMPLING_AVERAGE) {
+                if (gyroCount >= SAMPLING_AVERAGE) {
                     lastGyroAverage = gyroAverage
+                    gyroCount = 0
+                    gyroAverage = Triple(0.0F, 0.0F, 0.0F)
                 }
-                gyroCount = 0
-                gyroAverage = Triple(0.0F, 0.0F, 0.0F)
             }
         }
     }
@@ -149,8 +164,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun recordSensorValue(accValues: Triple<Float,Float,Float>, gyroValues: Triple<Float,Float,Float>) {
         if (recordMode == 1) {
-            recordedValues1.add(Pair(accValues, gyroValues))
-            recordedValues1.removeFirst()
+            if (recorded1) {
+                tmpRecordedValues1.add(Pair(accValues, gyroValues))
+                tmpRecordedValues1.removeFirst()
+            } else {
+                recordedValues1.add(Pair(accValues, gyroValues))
+                recordedValues1.removeFirst()
+            }
         } else if (recordMode == 2) {
             recordedValues2.add(Pair(accValues, gyroValues))
             recordedValues2.removeFirst()
@@ -158,8 +178,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             compareValues.add(Pair(accValues, gyroValues))
             compareValues.removeFirst()
         }
-        //findViewById<TextView>(R.id.sensor_data).text =
-        //    values.first.toString()+","+values.second.toString()+","+values.third.toString()
+    }
+
+    private fun trainCurrentData() {
+        for (i in 0 until RECORD_SIZE) {
+            if (recordMode == 1) {
+                recordedValues1[i] = Pair(
+                    Triple((recordedValues1[i].first.first + tmpRecordedValues1[i].first.first)/2,
+                        (recordedValues1[i].first.second + tmpRecordedValues1[i].first.second)/2,
+                        (recordedValues1[i].first.third + tmpRecordedValues1[i].first.third)/2),
+                    Triple((recordedValues1[i].second.first + tmpRecordedValues1[i].second.first)/2,
+                        (recordedValues1[i].second.second + tmpRecordedValues1[i].second.second)/2,
+                        (recordedValues1[i].second.third + tmpRecordedValues1[i].second.third)/2))
+            } else if (recordMode == 2) {
+                recordedValues2[i] = Pair(
+                    Triple((recordedValues2[i].first.first + tmpRecordedValues2[i].first.first)/2,
+                        (recordedValues2[i].first.second + tmpRecordedValues2[i].first.second)/2,
+                        (recordedValues2[i].first.third + tmpRecordedValues2[i].first.third)/2),
+                    Triple((recordedValues2[i].second.first + tmpRecordedValues2[i].second.first)/2,
+                        (recordedValues2[i].second.second + tmpRecordedValues2[i].second.second)/2,
+                        (recordedValues2[i].second.third + tmpRecordedValues2[i].second.third)/2))
+            }
+        }
     }
 
     private fun compareSensorValues(): Pair<Float, Float> {
